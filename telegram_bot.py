@@ -393,6 +393,8 @@ class OrderBot:
                     context.bot_data[f'recap_{user_id}'] = recap_message
                     context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
                     context.bot_data[f'thread_{user_id}'] = message_thread_id  # Stocker le thread ID
+                    context.bot_data[f'chat_{user_id}'] = target_id  # Stocker le chat ID
+                    context.bot_data[f'topic_name_{user_id}'] = topic_display_name if target_type == 'groupe' and topic_name else None  # Stocker le nom du topic
                     
                     logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
                 except Exception as e:
@@ -430,17 +432,54 @@ class OrderBot:
             await query.message.reply_text(message, parse_mode='Markdown')
         elif callback_data.startswith('done_'):
             # Marquer comme fait
+            user_id = callback_data.replace('done_', '')
+            thread_id = context.bot_data.get(f'thread_{user_id}')
+            chat_id = context.bot_data.get(f'chat_{user_id}')
+            topic_name = context.bot_data.get(f'topic_name_{user_id}')
+            
+            # Modifier le message
             await query.edit_message_text(
                 query.message.text + "\n\n✅ **COMMANDE TERMINÉE**",
                 parse_mode='Markdown'
             )
+            
+            # Modifier le nom du topic si disponible
+            if thread_id and chat_id and topic_name:
+                try:
+                    await context.bot.edit_forum_topic(
+                        chat_id=chat_id,
+                        message_thread_id=thread_id,
+                        name=f"✅ {topic_name}"
+                    )
+                except Exception as e:
+                    logger.error(f"Erreur lors de la modification du topic: {e}")
+            
             await query.answer("✅ Commande marquée comme terminée!")
+            
         elif callback_data.startswith('todo_'):
             # Marquer comme à faire
+            user_id = callback_data.replace('todo_', '')
+            thread_id = context.bot_data.get(f'thread_{user_id}')
+            chat_id = context.bot_data.get(f'chat_{user_id}')
+            topic_name = context.bot_data.get(f'topic_name_{user_id}')
+            
+            # Modifier le message
             await query.edit_message_text(
                 query.message.text + "\n\n📌 **À FAIRE**",
                 parse_mode='Markdown'
             )
+            
+            # Modifier le nom du topic si disponible
+            if thread_id and chat_id and topic_name:
+                try:
+                    await context.bot.edit_forum_topic(
+                        chat_id=chat_id,
+                        message_thread_id=thread_id,
+                        name=f"📌 {topic_name}"
+                    )
+                except Exception as e:
+                    logger.error(f"Erreur lors de la modification du topic: {e}")
+            
             await query.answer("📌 Commande marquée comme à faire!")
 
     async def get_channel_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
