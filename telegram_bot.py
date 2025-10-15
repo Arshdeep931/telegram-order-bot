@@ -546,11 +546,15 @@ class OrderBot:
         return ConversationHandler.END
 
 
-def main() -> None:
-    """Démarre le bot."""
+
+if __name__ == '__main__':
+    # Démarrer le bot
+    print("Démarrage du bot...")
     try:
-        # Créer l'updater et le dispatcher
+        # Créer l'application
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        
+        # Créer une instance du bot
         bot = OrderBot()
         
         # Gestionnaire de conversation
@@ -575,12 +579,9 @@ def main() -> None:
         application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
         
         # Démarrer le bot
-        logger.info("Démarrage du bot...")
+        print("Bot démarré!")
         application.run_polling(drop_pending_updates=True)
         
     except Exception as e:
-        logger.error(f"Erreur au démarrage du bot: {str(e)}", exc_info=True)
+        print(f"Erreur: {str(e)}")
         raise
-
-if __name__ == '__main__':
-    main()
