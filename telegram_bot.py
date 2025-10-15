@@ -549,7 +549,7 @@ class OrderBot:
 def main() -> None:
     """Démarre le bot."""
     try:
-        # Créer l'application
+        # Créer l'updater et le dispatcher
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         bot = OrderBot()
         
@@ -569,17 +569,15 @@ def main() -> None:
             fallbacks=[CommandHandler('cancel', bot.cancel)],
         )
         
+        # Ajouter les gestionnaires
         application.add_handler(conv_handler)
-        
-        # Ajouter le handler pour les boutons inline (en dehors de la conversation)
         application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_|done_|todo_)'))
-        
-        # Ajouter la commande pour obtenir l'ID du canal
         application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
         
-        logger.info("Bot démarré!")
+        # Démarrer le bot
+        logger.info("Démarrage du bot...")
         application.run_polling(drop_pending_updates=True)
-            
+        
     except Exception as e:
         logger.error(f"Erreur au démarrage du bot: {str(e)}", exc_info=True)
         raise
