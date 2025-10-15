@@ -564,17 +564,22 @@ def main():
 if __name__ == '__main__':
     import os
     
+    # Configuration du logger
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+    
     # Afficher les variables d'environnement (sans le token pour des raisons de sécurité)
     logger.info("=== Configuration du bot ===")
     logger.info(f"ADMIN_ID: {os.environ.get('ADMIN_ID', 'Non défini')}")
     logger.info(f"CHANNEL_ID: {os.environ.get('CHANNEL_ID', 'Non défini')}")
     logger.info("===========================")
     
-    PORT = int(os.environ.get('PORT', 5000))
     try:
         application = main()
-        logger.info(f"Démarrage du bot sur le port {PORT}...")
-        application.run_polling(port=PORT, host='0.0.0.0', allowed_updates=Update.ALL_TYPES)
+        logger.info("Démarrage du bot en mode polling...")
+        application.run_polling(drop_pending_updates=True)
     except Exception as e:
         logger.error(f"Erreur au démarrage du bot: {str(e)}")
         raise
