@@ -1,9 +1,7 @@
 services:
   - type: web
     name: telegram-order-bot
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python telegram_bot.py
+    dockerfile: Dockerfile
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -11,8 +9,7 @@ services:
         sync: false
       - key: CHANNEL_ID
         sync: false
-      - key: PYTHON_VERSION
-        value: 3.11.0
     plan: free
     region: frankfurt
     healthCheckPath: /
+    autoDeploy: true
