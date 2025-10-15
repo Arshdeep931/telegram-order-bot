@@ -7,16 +7,33 @@ Bot Telegram pour la collecte des informations de commande
 import logging
 import os
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from dotenv import load_dotenv
+from flask import Flask, jsonify
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    ForumTopic,
+    BotCommand
+)
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters,
     CallbackQueryHandler,
+    ConversationHandler,
+    filters,
+    ContextTypes,
 )
+
+# Créer une application Flask pour le health check
+app = Flask(__name__)
+
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
 # Configuration du logging
 logging.basicConfig(
@@ -525,9 +542,18 @@ class OrderBot:
         return ConversationHandler.END
 
 
-def main():
+def main() -> None:
     """Démarre le bot."""
-    # Créer l'application avec le token depuis les variables d'environnement
+    # Démarrer le serveur Flask dans un thread séparé sur un port différent
+    import threading
+    flask_port = int(os.environ.get('PORT', 10000))
+    server = threading.Thread(
+        target=lambda: app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False),
+        daemon=True
+    )
+    server.start()
+    
+    # Créer l'application Telegram
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Créer l'instance du bot
