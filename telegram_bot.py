@@ -340,16 +340,32 @@ class OrderBot:
             "✅ Commande confirmée!"
         )
         
-        # Envoyer le message à l'admin ET/OU au canal
+        # Envoyer le message à l'admin ET/OU au canal/groupe
         targets = []
         if ADMIN_ID:
-            targets.append(('admin', ADMIN_ID))
+            targets.append(('admin', ADMIN_ID, None))  # Pas de topic pour l'admin
         if CHANNEL_ID:
-            targets.append(('canal', CHANNEL_ID))
+            targets.append(('groupe', CHANNEL_ID, order['user_fullname']))  # Avec nom pour le topic
         
         if targets:
-            for target_type, target_id in targets:
+            for target_type, target_id, topic_name in targets:
                 try:
+                    message_thread_id = None
+                    
+                    # Si c'est un groupe et qu'on a un nom, créer un topic
+                    if target_type == 'groupe' and topic_name:
+                        try:
+                            # Créer un nouveau topic pour cette commande
+                            topic = await context.bot.create_forum_topic(
+                                chat_id=target_id,
+                                name=f"🛒 Commande de {topic_name}"
+                            )
+                            message_thread_id = topic.message_thread_id
+                            logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
+                        except Exception as e:
+                            logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
+                            # Continuer sans topic si ça échoue
+                    
                     # Boutons inline pour voir les détails
                     keyboard = [
                         [InlineKeyboardButton("📋 Voir détails complets", callback_data=f"details_{user_id}")],
@@ -357,18 +373,20 @@ class OrderBot:
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    # Envoyer le message compact avec boutons
+                    # Envoyer le message compact avec boutons (dans le topic si créé)
                     await context.bot.send_message(
                         chat_id=target_id,
                         text=compact_message,
                         parse_mode='Markdown',
-                        reply_markup=reply_markup
+                        reply_markup=reply_markup,
+                        message_thread_id=message_thread_id
                     )
                     
                     # Stocker les messages détaillés ET le screenshot pour les callbacks
                     context.bot_data[f'details_{user_id}'] = detailed_message
                     context.bot_data[f'recap_{user_id}'] = recap_message
                     context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
+                    context.bot_data[f'thread_{user_id}'] = message_thread_id  # Stocker le thread ID
                     
                     logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
                 except Exception as e:
@@ -383,6 +401,9 @@ class OrderBot:
         
         callback_data = query.data
         
+        # Récupérer le thread_id si disponible
+        message_thread_id = query.message.message_thread_id if hasattr(query.message, 'message_thread_id') else None
+        
         # Vérifier si c'est un bouton de détails ou de récap
         if callback_data.startswith('details_'):
             message = context.bot_data.get(callback_data, "❌ Détails non disponibles")
@@ -395,7 +416,8 @@ class OrderBot:
                 await context.bot.send_photo(
                     chat_id=query.message.chat_id,
                     photo=screenshot_id,
-                    caption="📸 Screenshot du panier"
+                    caption="📸 Screenshot du panier",
+                    message_thread_id=message_thread_id
                 )
         elif callback_data.startswith('recap_'):
             message = context.bot_data.get(callback_data, "❌ Récapitulatif non disponible")
