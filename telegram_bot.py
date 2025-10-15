@@ -577,9 +577,35 @@ if __name__ == '__main__':
     logger.info("===========================")
     
     try:
-        application = main()
-        logger.info("Démarrage du bot en mode polling...")
+        # Créer l'application
+        application = Application.builder().token(os.environ.get('TELEGRAM_BOT_TOKEN')).build()
+        
+        # Initialiser le bot
+        bot = OrderBot()
+        
+        # Ajouter les handlers
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('start', bot.start)],
+            states={
+                RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
+                ADRESSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.adresse)],
+                PRIX_SUBTOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_subtotal)],
+                PRIX_TTC: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_ttc)],
+                MOYEN_PAIEMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.moyen_paiement)],
+                SCREENSHOT: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, bot.screenshot)],
+                LIVRAISON_TYPE: [CallbackQueryHandler(bot.livraison_type, pattern='^(commander_maintenant|planifier)$')],
+                CRENEAU: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.creneau)],
+            },
+            fallbacks=[CommandHandler('cancel', bot.cancel)],
+        )
+        
+        application.add_handler(conv_handler)
+        application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_|done_|todo_)'))
+        application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
+        
+        logger.info("Démarrage du bot...")
         application.run_polling(drop_pending_updates=True)
+        
     except Exception as e:
-        logger.error(f"Erreur au démarrage du bot: {str(e)}")
+        logger.error(f"Erreur au démarrage du bot: {str(e)}", exc_info=True)
         raise
