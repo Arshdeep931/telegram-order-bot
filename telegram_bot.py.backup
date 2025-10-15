@@ -303,89 +303,86 @@ class OrderBot:
 
     async def send_order_to_admin(self, context: ContextTypes.DEFAULT_TYPE, query_or_update):
         """Envoie les détails de la commande à l'administrateur."""
-        try:
-            order = context.user_data['order']
-
-            # Construire le message pour l'admin
-            uber_one_info = order['uber_one']
-
-            # Créer un lien cliquable vers le profil de l'utilisateur
-            user_id = order['user_id']
-            user_link = f"[{order['user_fullname']}](tg://user?id={user_id})"
-
-            # Message ultra compact - juste la notification
-            compact_message = (
-                "🛒 **NOUVELLE COMMANDE**\n\n"
-                f"👤 Client: {user_link}"
-            )
-
-            # Message détaillé complet
-            detailed_message = (
-                "🛒 **DÉTAILS DE LA COMMANDE**\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👤 **Client:** {user_link}\n"
-                f"📱 **Username:** {order['username']}\n\n"
-                f"🍽️ **Restaurant:** {order['restaurant']}\n"
-                f"📍 **Adresse de livraison:**\n{order['adresse']}\n\n"
-                f"💰 **Prix sous-total (min 20€ HT):** {order['prix_subtotal']}\n"
-                f"💳 **Prix TTC:** {order['prix_ttc']}\n"
-                f"💵 **Moyen de paiement:** {order['moyen_paiement']}\n"
-                f"🎫 **Uber One :** {uber_one_info}\n\n"
-                f"🚚 **Type de livraison:** {order['type_livraison']}\n"
-                f"⏰ **Heure de réception:** {order['creneau']}\n\n"
-                f"📅 **Date de commande:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
-            )
-
-            # Récapitulatif pour le client
-            recap_message = (
-                "📋 **RÉCAP POUR LE CLIENT**\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🍽️ Restaurant: {order['restaurant']}\n"
-                f"📍 Adresse: {order['adresse']}\n"
-                f"💰 Sous-total: {order['prix_subtotal']}\n"
-                f"💳 TTC: {order['prix_ttc']}\n"
-                f"💵 Paiement: {order['moyen_paiement']}\n"
-                f"🎫 Uber One: {uber_one_info}\n"
-                f"🚚 Livraison: {order['type_livraison']}\n"
-                f"⏰ Heure: {order['creneau']}\n\n"
-                "✅ Commande confirmée!"
-            )
-
-            # Envoyer le message à l'admin ET/OU au canal/groupe
-            targets = []
-            if 'ADMIN_ID' in globals() and ADMIN_ID:
-                targets.append(('admin', ADMIN_ID, None))  # Pas de topic pour l'admin
-            if 'CHANNEL_ID' in globals() and CHANNEL_ID:
-                targets.append(('groupe', CHANNEL_ID, order['user_fullname']))  # Avec nom pour le topic
-
-            if not targets:
-                logger.warning("Ni ADMIN_ID ni CHANNEL_ID ne sont configurés! La commande n'a pas été envoyée.")
-                return
-
+        order = context.user_data['order']
+        
+        # Construire le message pour l'admin
+        uber_one_info = order['uber_one']
+        
+        # Créer un lien cliquable vers le profil de l'utilisateur
+        user_id = order['user_id']
+        user_link = f"[{order['user_fullname']}](tg://user?id={user_id})"
+        
+        # Message ultra compact - juste la notification
+        compact_message = (
+            "🛒 **NOUVELLE COMMANDE**\n\n"
+            f"👤 Client: {user_link}"
+        )
+        
+        # Message détaillé complet
+        detailed_message = (
+            "🛒 **DÉTAILS DE LA COMMANDE**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 **Client:** {user_link}\n"
+            f"📱 **Username:** {order['username']}\n\n"
+            f"🍽️ **Restaurant:** {order['restaurant']}\n"
+            f"📍 **Adresse de livraison:**\n{order['adresse']}\n\n"
+            f"💰 **Prix sous-total (min 20€ HT):** {order['prix_subtotal']}\n"
+            f"💳 **Prix TTC:** {order['prix_ttc']}\n"
+            f"💵 **Moyen de paiement:** {order['moyen_paiement']}\n"
+            f"🎫 **Uber One :** {uber_one_info}\n\n"
+            f"🚚 **Type de livraison:** {order['type_livraison']}\n"
+            f"⏰ **Heure de réception:** {order['creneau']}\n\n"
+            f"📅 **Date de commande:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+        )
+        
+        # Récapitulatif pour le client
+        recap_message = (
+            "📋 **RÉCAP POUR LE CLIENT**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🍽️ Restaurant: {order['restaurant']}\n"
+            f"📍 Adresse: {order['adresse']}\n"
+            f"💰 Sous-total: {order['prix_subtotal']}\n"
+            f"💳 TTC: {order['prix_ttc']}\n"
+            f"💵 Paiement: {order['moyen_paiement']}\n"
+            f"🎫 Uber One: {uber_one_info}\n"
+            f"🚚 Livraison: {order['type_livraison']}\n"
+            f"⏰ Heure: {order['creneau']}\n\n"
+            "✅ Commande confirmée!"
+        )
+        
+        # Envoyer le message à l'admin ET/OU au canal/groupe
+        targets = []
+        if ADMIN_ID:
+            targets.append(('admin', ADMIN_ID, None))  # Pas de topic pour l'admin
+        if CHANNEL_ID:
+            targets.append(('groupe', CHANNEL_ID, order['user_fullname']))  # Avec nom pour le topic
+        
+        if targets:
             for target_type, target_id, topic_name in targets:
-                message_thread_id = None
-                topic_display_name = None
-
                 try:
+                    message_thread_id = None
+                    
                     # Si c'est un groupe et qu'on a un nom, créer un topic
                     if target_type == 'groupe' and topic_name:
                         try:
                             # Utiliser le username si disponible, sinon le nom complet
                             username = order.get('username', '').replace('@', '')
                             topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
-
-                            # Créer un nouveau topic pour cette commande
+                            
+                            # Créer un nouveau topic pour cette commande avec le statut "À faire"
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
                                 name=f"📌 {topic_display_name}"  # Marqué comme "À faire" par défaut
                             )
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
-
+                            
+                            # Stocker le statut initial
+                            context.bot_data[f'status_{user_id}'] = 'todo'
                         except Exception as e:
                             logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
                             # Continuer sans topic si ça échoue
-
+                    
                     # Boutons inline pour voir les détails et gérer le statut
                     keyboard = [
                         [InlineKeyboardButton("📋 Voir détails complets", callback_data=f"details_{user_id}")],
@@ -394,59 +391,29 @@ class OrderBot:
                          InlineKeyboardButton("📌 À faire", callback_data=f"todo_{user_id}")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-
-                    # Préparer les paramètres d'envoi
-                    send_kwargs = {
-                        'chat_id': target_id,
-                        'text': compact_message,
-                        'parse_mode': 'Markdown',
-                        'reply_markup': reply_markup
-                    }
-
-                    # Ajouter le message_thread_id uniquement s'il est défini et non None
-                    if message_thread_id is not None:
-                        send_kwargs['message_thread_id'] = message_thread_id
-
-                    # Envoyer le message
-                    sent_message = await context.bot.send_message(**send_kwargs)
-
+                    
+                    # Envoyer le message compact avec boutons (dans le topic si créé)
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=compact_message,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup,
+                        message_thread_id=message_thread_id
+                    )
+                    
                     # Stocker les messages détaillés ET le screenshot pour les callbacks
                     context.bot_data[f'details_{user_id}'] = detailed_message
                     context.bot_data[f'recap_{user_id}'] = recap_message
                     context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
-
-                    # Stocker les informations du thread uniquement si c'est un groupe avec topic
-                    if target_type == 'groupe' and message_thread_id is not None:
-                        context.bot_data[f'thread_{user_id}'] = message_thread_id
-                        context.bot_data[f'chat_{user_id}'] = target_id
-                        context.bot_data[f'topic_name_{user_id}'] = topic_display_name
-
-                    logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order.get('username', 'inconnu')}")
-
+                    context.bot_data[f'thread_{user_id}'] = message_thread_id  # Stocker le thread ID
+                    context.bot_data[f'chat_{user_id}'] = target_id  # Stocker le chat ID
+                    context.bot_data[f'topic_name_{user_id}'] = topic_display_name if target_type == 'groupe' and topic_name else None  # Stocker le nom du topic
+                    
+                    logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
                 except Exception as e:
-                    error_msg = f"Erreur lors de l'envoi au {target_type} ({target_id}): {str(e)}"
-                    logger.error(error_msg)
-
-                    # Essayer d'envoyer un message d'erreur à l'admin
-                    if 'ADMIN_ID' in globals() and ADMIN_ID and ADMIN_ID != target_id:
-                        try:
-                            await context.bot.send_message(
-                                chat_id=ADMIN_ID,
-                                text=f"❌ {error_msg}"
-                            )
-                        except Exception as admin_error:
-                            logger.error(f"Impossible d'envoyer le message d'erreur à l'admin: {admin_error}")
-
-        except Exception as e:
-            logger.error(f"Erreur critique dans send_order_to_admin: {str(e)}", exc_info=True)
-            if 'ADMIN_ID' in globals() and ADMIN_ID:
-                try:
-                    await context.bot.send_message(
-                        chat_id=ADMIN_ID,
-                        text=f"❌ Erreur critique dans send_order_to_admin: {str(e)}"
-                    )
-                except:
-                    pass
+                    logger.error(f"Erreur lors de l'envoi au {target_type} ({target_id}): {e}")
+        else:
+            logger.warning("Ni ADMIN_ID ni CHANNEL_ID ne sont configurés! La commande n'a pas été envoyée.")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Gère les clics sur les boutons inline."""
