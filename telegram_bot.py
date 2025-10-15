@@ -26,7 +26,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # États de la conversation
-RESTAURANT, ADRESSE, PRIX_SUBTOTAL, PRIX_TTC, MOYEN_PAIEMENT, SCREENSHOT, LIVRAISON_TYPE, CRENEAU = range(8)
+(
+    RESTAURANT,      # 0
+    ADRESSE,         # 1
+    PRIX_SUBTOTAL,   # 2
+    PRIX_TTC,        # 3
+    MOYEN_PAIEMENT,  # 4
+    SCREENSHOT,      # 5
+    LIVRAISON_TYPE,  # 6
+    CRENEAU,         # 7
+    PRIX_CORRIGE     # 8 - État spécial après correction de prix
+) = range(9)
 
 # Configuration depuis les variables d'environnement (ou valeurs par défaut)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
