@@ -7,33 +7,16 @@ Bot Telegram pour la collecte des informations de commande
 import logging
 import os
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from flask import Flask, jsonify
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
-    ForumTopic,
-    BotCommand
-)
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     ConversationHandler,
-    filters,
     ContextTypes,
+    filters,
+    CallbackQueryHandler,
 )
-
-# Créer une application Flask pour le health check
-app = Flask(__name__)
-
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "ok"}), 200
 
 # Configuration du logging
 logging.basicConfig(
@@ -386,18 +369,16 @@ class OrderBot:
                             username = order.get('username', '').replace('@', '')
                             topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
                             
-                            # Créer un nouveau topic pour cette commande avec le statut 'À faire' par défaut
+                            # Créer un nouveau topic pour cette commande avec le statut "À faire"
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
-                                name=f"📌 {topic_display_name}"  # Marqué comme 'À faire' par défaut
+                                name=f"📌 {topic_display_name}"  # Marqué comme "À faire" par défaut
                             )
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
                             
-                            # Stocker les informations du topic pour les boutons
-                            context.bot_data[f'thread_{user_id}'] = message_thread_id
-                            context.bot_data[f'chat_{user_id}'] = target_id
-                            context.bot_data[f'topic_name_{user_id}'] = topic_display_name
+                            # Stocker le statut initial
+                            context.bot_data[f'status_{user_id}'] = 'todo'
                         except Exception as e:
                             logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
                             # Continuer sans topic si ça échoue
@@ -469,10 +450,19 @@ class OrderBot:
             chat_id = context.bot_data.get(f'chat_{user_id}')
             topic_name = context.bot_data.get(f'topic_name_{user_id}')
             
+            # Mettre à jour le statut
+            context.bot_data[f'status_{user_id}'] = 'done'
+            
             # Modifier le message
+            message_text = query.message.text
+            # Supprimer les anciens statuts s'ils existent
+            message_text = message_text.split('\n\n📌 **À FAIRE**')[0]
+            message_text = message_text.split('\n\n✅ **COMMANDE TERMINÉE**')[0]
+            
             await query.edit_message_text(
-                query.message.text + "\n\n✅ **COMMANDE TERMINÉE**",
-                parse_mode='Markdown'
+                f"{message_text}\n\n✅ **COMMANDE TERMINÉE**",
+                parse_mode='Markdown',
+                reply_markup=query.message.reply_markup  # Conserver les boutons existants
             )
             
             # Modifier le nom du topic si disponible
@@ -495,10 +485,19 @@ class OrderBot:
             chat_id = context.bot_data.get(f'chat_{user_id}')
             topic_name = context.bot_data.get(f'topic_name_{user_id}')
             
+            # Mettre à jour le statut
+            context.bot_data[f'status_{user_id}'] = 'todo'
+            
             # Modifier le message
+            message_text = query.message.text
+            # Supprimer les anciens statuts s'ils existent
+            message_text = message_text.split('\n\n📌 **À FAIRE**')[0]
+            message_text = message_text.split('\n\n✅ **COMMANDE TERMINÉE**')[0]
+            
             await query.edit_message_text(
-                query.message.text + "\n\n📌 **À FAIRE**",
-                parse_mode='Markdown'
+                f"{message_text}\n\n📌 **À FAIRE**",
+                parse_mode='Markdown',
+                reply_markup=query.message.reply_markup  # Conserver les boutons existants
             )
             
             # Modifier le nom du topic si disponible
@@ -542,18 +541,9 @@ class OrderBot:
         return ConversationHandler.END
 
 
-def main() -> None:
+def main():
     """Démarre le bot."""
-    # Démarrer le serveur Flask dans un thread séparé sur un port différent
-    import threading
-    flask_port = int(os.environ.get('PORT', 10000))
-    server = threading.Thread(
-        target=lambda: app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False),
-        daemon=True
-    )
-    server.start()
-    
-    # Créer l'application Telegram
+    # Créer l'application avec le token depuis les variables d'environnement
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Créer l'instance du bot
@@ -583,13 +573,10 @@ def main() -> None:
     # Ajouter la commande pour obtenir l'ID du canal
     application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
     
-    logger.info("Bot prêt à démarrer...")
-    return application
+    # Démarrer le bot
+    logger.info("Bot démarré!")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
-    import os
-    PORT = int(os.environ.get('PORT', 5000))
-    application = main()
-    logger.info(f"Démarrage du bot sur le port {PORT}...")
-    application.run_polling(port=PORT, host='0.0.0.0', allowed_updates=Update.ALL_TYPES)
+    main()
