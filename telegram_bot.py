@@ -31,6 +31,7 @@ RESTAURANT, ADRESSE, PRIX_SUBTOTAL, PRIX_TTC, MOYEN_PAIEMENT, SCREENSHOT, LIVRAI
 # Configuration depuis les variables d'environnement (ou valeurs par défaut)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAGqGlMvf_401OH-QsNgjFLEAJAd_AJz1Jg')
+CHANNEL_ID = os.getenv('CHANNEL_ID', None)  # ID du canal pour les notifications
 
 
 class OrderBot:
@@ -339,34 +340,41 @@ class OrderBot:
             "✅ Commande confirmée!"
         )
         
-        # Envoyer le message à l'admin
+        # Envoyer le message à l'admin ET/OU au canal
+        targets = []
         if ADMIN_ID:
-            try:
-                # Boutons inline pour voir les détails
-                keyboard = [
-                    [InlineKeyboardButton("📋 Voir détails complets", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("📝 Récap pour client", callback_data=f"recap_{user_id}")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                # Envoyer le message compact avec boutons
-                await context.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=compact_message,
-                    parse_mode='Markdown',
-                    reply_markup=reply_markup
-                )
-                
-                # Stocker les messages détaillés ET le screenshot pour les callbacks
-                context.bot_data[f'details_{user_id}'] = detailed_message
-                context.bot_data[f'recap_{user_id}'] = recap_message
-                context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
-                
-                logger.info(f"Commande envoyée à l'admin pour l'utilisateur {order['username']}")
-            except Exception as e:
-                logger.error(f"Erreur lors de l'envoi à l'admin: {e}")
+            targets.append(('admin', ADMIN_ID))
+        if CHANNEL_ID:
+            targets.append(('canal', CHANNEL_ID))
+        
+        if targets:
+            for target_type, target_id in targets:
+                try:
+                    # Boutons inline pour voir les détails
+                    keyboard = [
+                        [InlineKeyboardButton("📋 Voir détails complets", callback_data=f"details_{user_id}")],
+                        [InlineKeyboardButton("📝 Récap pour client", callback_data=f"recap_{user_id}")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    # Envoyer le message compact avec boutons
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=compact_message,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
+                    
+                    # Stocker les messages détaillés ET le screenshot pour les callbacks
+                    context.bot_data[f'details_{user_id}'] = detailed_message
+                    context.bot_data[f'recap_{user_id}'] = recap_message
+                    context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
+                    
+                    logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
+                except Exception as e:
+                    logger.error(f"Erreur lors de l'envoi au {target_type} ({target_id}): {e}")
         else:
-            logger.warning("ADMIN_ID n'est pas configuré! La commande n'a pas été envoyée.")
+            logger.warning("Ni ADMIN_ID ni CHANNEL_ID ne sont configurés! La commande n'a pas été envoyée.")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Gère les clics sur les boutons inline."""
@@ -392,6 +400,23 @@ class OrderBot:
         elif callback_data.startswith('recap_'):
             message = context.bot_data.get(callback_data, "❌ Récapitulatif non disponible")
             await query.message.reply_text(message, parse_mode='Markdown')
+
+    async def get_channel_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Récupère l'ID du canal/groupe où la commande est envoyée."""
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+        chat_title = update.effective_chat.title if hasattr(update.effective_chat, 'title') else 'N/A'
+        
+        await update.message.reply_text(
+            f"📋 **Informations du chat:**\n\n"
+            f"🆔 **Chat ID:** `{chat_id}`\n"
+            f"📱 **Type:** {chat_type}\n"
+            f"📝 **Titre:** {chat_title}\n\n"
+            f"💡 **Pour utiliser ce canal:**\n"
+            f"Ajoutez cette variable d'environnement:\n"
+            f"`CHANNEL_ID={chat_id}`",
+            parse_mode='Markdown'
+        )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Annule la conversation."""
@@ -432,6 +457,9 @@ def main():
     
     # Ajouter le handler pour les boutons inline (en dehors de la conversation)
     application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_)'))
+    
+    # Ajouter la commande pour obtenir l'ID du canal
+    application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
     
     # Démarrer le bot
     logger.info("Bot démarré!")
