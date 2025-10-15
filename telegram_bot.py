@@ -369,13 +369,18 @@ class OrderBot:
                             username = order.get('username', '').replace('@', '')
                             topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
                             
-                            # Créer un nouveau topic pour cette commande
+                            # Créer un nouveau topic pour cette commande avec le statut 'À faire' par défaut
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
-                                name=f"🛒 {topic_display_name}"
+                                name=f"📌 {topic_display_name}"  # Marqué comme 'À faire' par défaut
                             )
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
+                            
+                            # Stocker les informations du topic pour les boutons
+                            context.bot_data[f'thread_{user_id}'] = message_thread_id
+                            context.bot_data[f'chat_{user_id}'] = target_id
+                            context.bot_data[f'topic_name_{user_id}'] = topic_display_name
                         except Exception as e:
                             logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
                             # Continuer sans topic si ça échoue
@@ -552,10 +557,13 @@ def main():
     # Ajouter la commande pour obtenir l'ID du canal
     application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
     
-    # Démarrer le bot
-    logger.info("Bot démarré!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Bot prêt à démarrer...")
+    return application
 
 
 if __name__ == '__main__':
-    main()
+    import os
+    PORT = int(os.environ.get('PORT', 5000))
+    application = main()
+    logger.info(f"Démarrage du bot sur le port {PORT}...")
+    application.run_polling(port=PORT, host='0.0.0.0', allowed_updates=Update.ALL_TYPES)
