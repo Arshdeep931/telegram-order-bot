@@ -355,10 +355,14 @@ class OrderBot:
                     # Si c'est un groupe et qu'on a un nom, créer un topic
                     if target_type == 'groupe' and topic_name:
                         try:
+                            # Utiliser le username si disponible, sinon le nom complet
+                            username = order.get('username', '').replace('@', '')
+                            topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
+                            
                             # Créer un nouveau topic pour cette commande
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
-                                name=f"🛒 Commande de {topic_name}"
+                                name=f"🛒 {topic_display_name}"
                             )
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
@@ -366,10 +370,12 @@ class OrderBot:
                             logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
                             # Continuer sans topic si ça échoue
                     
-                    # Boutons inline pour voir les détails
+                    # Boutons inline pour voir les détails et gérer le statut
                     keyboard = [
                         [InlineKeyboardButton("📋 Voir détails complets", callback_data=f"details_{user_id}")],
-                        [InlineKeyboardButton("📝 Récap pour client", callback_data=f"recap_{user_id}")]
+                        [InlineKeyboardButton("📝 Récap pour client", callback_data=f"recap_{user_id}")],
+                        [InlineKeyboardButton("✅ Marquer comme fait", callback_data=f"done_{user_id}"),
+                         InlineKeyboardButton("📌 À faire", callback_data=f"todo_{user_id}")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
@@ -422,6 +428,20 @@ class OrderBot:
         elif callback_data.startswith('recap_'):
             message = context.bot_data.get(callback_data, "❌ Récapitulatif non disponible")
             await query.message.reply_text(message, parse_mode='Markdown')
+        elif callback_data.startswith('done_'):
+            # Marquer comme fait
+            await query.edit_message_text(
+                query.message.text + "\n\n✅ **COMMANDE TERMINÉE**",
+                parse_mode='Markdown'
+            )
+            await query.answer("✅ Commande marquée comme terminée!")
+        elif callback_data.startswith('todo_'):
+            # Marquer comme à faire
+            await query.edit_message_text(
+                query.message.text + "\n\n📌 **À FAIRE**",
+                parse_mode='Markdown'
+            )
+            await query.answer("📌 Commande marquée comme à faire!")
 
     async def get_channel_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Récupère l'ID du canal/groupe où la commande est envoyée."""
