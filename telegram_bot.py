@@ -39,9 +39,24 @@ logger = logging.getLogger(__name__)
 ) = range(9)
 
 # Configuration depuis les variables d'environnement (ou valeurs par défaut)
-ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAGqGlMvf_401OH-QsNgjFLEAJAd_AJz1Jg')
-CHANNEL_ID = os.getenv('CHANNEL_ID', None)  # ID du canal pour les notifications
+try:
+    ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAGqGlMvf_401OH-QsNgjFLEAJAd_AJz1Jg')
+    CHANNEL_ID = os.getenv('CHANNEL_ID', None)  # ID du canal pour les notifications
+    
+    # Vérification des variables requises
+    if not TELEGRAM_BOT_TOKEN:
+        raise ValueError("Le token du bot est requis")
+        
+except Exception as e:
+    logger.error(f"Erreur de configuration : {str(e)}")
+    raise
+
+# Configuration du logger
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 
 class OrderBot:
@@ -362,14 +377,17 @@ class OrderBot:
                 try:
                     message_thread_id = None
                     
-                    # Si c'est un groupe et qu'on a un nom, créer un topic
+                    # Si c'est un groupe et qu'on a un nom, essayer de créer un topic
                     if target_type == 'groupe' and topic_name:
+                        message_thread_id = None
+                        topic_display_name = None
+                        
                         try:
                             # Utiliser le username si disponible, sinon le nom complet
                             username = order.get('username', '').replace('@', '')
                             topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
                             
-                            # Créer un nouveau topic pour cette commande avec le statut 'À faire' par défaut
+                            # Essayer de créer un nouveau topic
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
                                 name=f"📌 {topic_display_name}"  # Marqué comme 'À faire' par défaut
@@ -377,13 +395,18 @@ class OrderBot:
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
                             
-                            # Stocker les informations du topic pour les boutons
-                            context.bot_data[f'thread_{user_id}'] = message_thread_id
-                            context.bot_data[f'chat_{user_id}'] = target_id
-                            context.bot_data[f'topic_name_{user_id}'] = topic_display_name
                         except Exception as e:
-                            logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
-                            # Continuer sans topic si ça échoue
+                            logger.warning(f"Impossible de créer un topic, envoi dans le chat principal: {e}")
+                            # Continuer dans le chat principal si la création du topic échoue
+                        
+                        # Stocker les informations du topic même si la création a échoué
+                        # (pour les cas où on voudrait utiliser le chat principal)
+                        if target_id:  # S'assurer que target_id est valide
+                            context.bot_data[f'chat_{user_id}'] = target_id
+                            if topic_display_name:
+                                context.bot_data[f'topic_name_{user_id}'] = topic_display_name
+                            if message_thread_id:
+                                context.bot_data[f'thread_{user_id}'] = message_thread_id
                     
                     # Boutons inline pour voir les détails et gérer le statut
                     keyboard = [
@@ -527,44 +550,7 @@ class OrderBot:
 
 def main():
     """Démarre le bot."""
-    # Créer l'application avec le token depuis les variables d'environnement
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    # Créer l'instance du bot
-    bot = OrderBot()
-    
-    # Définir le gestionnaire de conversation
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', bot.start)],
-        states={
-            RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
-            ADRESSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.adresse)],
-            PRIX_SUBTOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_subtotal)],
-            PRIX_TTC: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_ttc)],
-            MOYEN_PAIEMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.moyen_paiement)],
-            SCREENSHOT: [MessageHandler(filters.PHOTO, bot.screenshot)],
-            LIVRAISON_TYPE: [CallbackQueryHandler(bot.livraison_type)],
-            CRENEAU: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.creneau)],
-        },
-        fallbacks=[CommandHandler('cancel', bot.cancel)],
-    )
-    
-    application.add_handler(conv_handler)
-    
-    # Ajouter le handler pour les boutons inline (en dehors de la conversation)
-    application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_)'))
-    
-    # Ajouter la commande pour obtenir l'ID du canal
-    application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
-    
-    logger.info("Bot prêt à démarrer...")
-    return application
-
-
-if __name__ == '__main__':
-    import os
-    
-    # Configuration du logger
+    # Configuration du logging
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
