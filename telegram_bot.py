@@ -6,7 +6,6 @@ Bot Telegram pour la collecte des informations de commande
 
 import logging
 import os
-import telegram
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -20,26 +19,6 @@ from telegram.ext import (
 )
 
 # Configuration du logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# États de la conversation
-(
-    RESTAURANT,      # 0
-    ADRESSE,         # 1
-    PRIX_SUBTOTAL,   # 2
-    PRIX_TTC,        # 3
-    MOYEN_PAIEMENT,  # 4
-    SCREENSHOT,      # 5
-    LIVRAISON_TYPE,  # 6
-    CRENEAU,         # 7
-    PRIX_CORRIGE     # 8 - État spécial après correction de prix
-) = range(9)
-
-# Configuration du logger
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -390,22 +369,21 @@ class OrderBot:
                             username = order.get('username', '').replace('@', '')
                             topic_display_name = username if username and username != f"ID: {user_id}" else topic_name
                             
-                            # Créer un nouveau topic pour cette commande
+                            # Créer un nouveau topic pour cette commande avec le statut 'À faire' par défaut
                             topic = await context.bot.create_forum_topic(
                                 chat_id=target_id,
-                                name=f"📌 {topic_display_name}"
+                                name=f"📌 {topic_display_name}"  # Marqué comme 'À faire' par défaut
                             )
                             message_thread_id = topic.message_thread_id
                             logger.info(f"Topic créé: {topic.name} (ID: {message_thread_id})")
                             
-                            # Stocker les infos du topic pour les boutons
+                            # Stocker les informations du topic pour les boutons
                             context.bot_data[f'thread_{user_id}'] = message_thread_id
                             context.bot_data[f'chat_{user_id}'] = target_id
                             context.bot_data[f'topic_name_{user_id}'] = topic_display_name
-                            
                         except Exception as e:
-                            logger.warning(f"Impossible de créer un topic: {e}")
-                            # Continuer sans topic
+                            logger.warning(f"Impossible de créer un topic (le groupe n'a peut-être pas les topics activés): {e}")
+                            # Continuer sans topic si ça échoue
                     
                     # Boutons inline pour voir les détails et gérer le statut
                     keyboard = [
@@ -547,55 +525,45 @@ class OrderBot:
         return ConversationHandler.END
 
 
+def main():
+    """Démarre le bot."""
+    # Créer l'application avec le token depuis les variables d'environnement
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Créer l'instance du bot
+    bot = OrderBot()
+    
+    # Définir le gestionnaire de conversation
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', bot.start)],
+        states={
+            RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
+            ADRESSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.adresse)],
+            PRIX_SUBTOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_subtotal)],
+            PRIX_TTC: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_ttc)],
+            MOYEN_PAIEMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.moyen_paiement)],
+            SCREENSHOT: [MessageHandler(filters.PHOTO, bot.screenshot)],
+            LIVRAISON_TYPE: [CallbackQueryHandler(bot.livraison_type)],
+            CRENEAU: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.creneau)],
+        },
+        fallbacks=[CommandHandler('cancel', bot.cancel)],
+    )
+    
+    application.add_handler(conv_handler)
+    
+    # Ajouter le handler pour les boutons inline (en dehors de la conversation)
+    application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_)'))
+    
+    # Ajouter la commande pour obtenir l'ID du canal
+    application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
+    
+    logger.info("Bot prêt à démarrer...")
+    return application
+
 
 if __name__ == '__main__':
-    # Configuration du logging
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
-    logger = logging.getLogger(__name__)
-    
-    print("\n=== Démarrage du bot ===")
-    print(f"Version python-telegram-bot: {telegram.__version__}")
-    print("======================\n")
-    
-    try:
-        # Vérifier le token
-        if not TELEGRAM_BOT_TOKEN:
-            raise ValueError("Le token du bot n'est pas configuré. Vérifiez la variable d'environnement TELEGRAM_BOT_TOKEN.")
-            
-        # Créer l'application
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        
-        # Créer une instance du bot
-        bot = OrderBot()
-        
-        # Gestionnaire de conversation
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', bot.start)],
-            states={
-                RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
-                ADRESSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.adresse)],
-                PRIX_SUBTOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_subtotal)],
-                PRIX_TTC: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_ttc)],
-                MOYEN_PAIEMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.moyen_paiement)],
-                SCREENSHOT: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, bot.screenshot)],
-                LIVRAISON_TYPE: [CallbackQueryHandler(bot.livraison_type, pattern='^(commander_maintenant|planifier)$')],
-                CRENEAU: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.creneau)],
-            },
-            fallbacks=[CommandHandler('cancel', bot.cancel)],
-        )
-        
-        # Ajouter les gestionnaires
-        application.add_handler(conv_handler)
-        application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_|done_|todo_)'))
-        application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
-        
-        # Démarrer le bot
-        print("Bot démarré!")
-        application.run_polling(drop_pending_updates=True)
-        
-    except Exception as e:
-        print(f"Erreur: {str(e)}")
-        raise
+    import os
+    PORT = int(os.environ.get('PORT', 5000))
+    application = main()
+    logger.info(f"Démarrage du bot sur le port {PORT}...")
+    application.run_polling(port=PORT, host='0.0.0.0', allowed_updates=Update.ALL_TYPES)
