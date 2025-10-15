@@ -6,6 +6,7 @@ Bot Telegram pour la collecte des informations de commande
 
 import logging
 import os
+import telegram
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -548,9 +549,22 @@ class OrderBot:
 
 
 if __name__ == '__main__':
-    # Démarrer le bot
-    print("Démarrage du bot...")
+    # Configuration du logging
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+    logger = logging.getLogger(__name__)
+    
+    print("\n=== Démarrage du bot ===")
+    print(f"Version python-telegram-bot: {telegram.__version__}")
+    print("======================\n")
+    
     try:
+        # Vérifier le token
+        if not TELEGRAM_BOT_TOKEN:
+            raise ValueError("Le token du bot n'est pas configuré. Vérifiez la variable d'environnement TELEGRAM_BOT_TOKEN.")
+            
         # Créer l'application
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
