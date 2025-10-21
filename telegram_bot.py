@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Configuration depuis les variables d'environnement (ou valeurs par défaut)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAGqGlMvf_401OH-QsNgjFLEAJAd_AJz1Jg')
-CHANNEL_ID = os.getenv('CHANNEL_ID', None)  # ID du canal pour les notifications
+CHANNEL_ID = os.getenv('CHANNEL_ID', '-1003199416919')  # ID du canal pour les notifications
 
 
 class OrderBot:
@@ -350,15 +350,16 @@ class OrderBot:
             "✅ Commande confirmée!"
         )
         
-            # Envoyer le message à l'admin ET/OU au canal/groupe
-            targets = []
-            if ADMIN_ID:
-                targets.append(('admin', ADMIN_ID, None))  # Pas de topic pour l'admin
-            if CHANNEL_ID:
-                targets.append(('groupe', CHANNEL_ID, order['user_fullname']))  # Avec nom pour le topic
-            
-            if targets:
-                for target_type, target_id, topic_name in targets:
+        # Envoyer le message à l'admin ET/OU au canal/groupe
+        targets = []
+        if ADMIN_ID:
+            targets.append(('admin', ADMIN_ID, None))  # Pas de topic pour l'admin
+        if CHANNEL_ID:
+            targets.append(('groupe', CHANNEL_ID, order['user_fullname']))  # Avec nom pour le topic
+        
+        if targets:
+            for target_type, target_id, topic_name in targets:
+                try:
                     message_thread_id = None
                     
                     # Si c'est un groupe et qu'on a un nom, créer un topic
@@ -391,45 +392,28 @@ class OrderBot:
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    # Préparer les paramètres d'envoi avec gestion d'erreur améliorée
-                    send_kwargs = {
-                        'chat_id': target_id,
-                        'text': compact_message,
-                        'parse_mode': 'Markdown',
-                        'reply_markup': reply_markup
-                    }
+                    # Envoyer le message compact avec boutons (dans le topic si créé)
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=compact_message,
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup,
+                        message_thread_id=message_thread_id
+                    )
                     
-                    # Ajouter le message_thread_id uniquement s'il est défini
-                    if message_thread_id is not None:
-                        send_kwargs['message_thread_id'] = message_thread_id
+                    # Stocker les messages détaillés ET le screenshot pour les callbacks
+                    context.bot_data[f'details_{user_id}'] = detailed_message
+                    context.bot_data[f'recap_{user_id}'] = recap_message
+                    context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
+                    context.bot_data[f'thread_{user_id}'] = message_thread_id  # Stocker le thread ID
+                    context.bot_data[f'chat_{user_id}'] = target_id  # Stocker le chat ID
+                    context.bot_data[f'topic_name_{user_id}'] = topic_display_name if target_type == 'groupe' and topic_name else None  # Stocker le nom du topic
                     
-                    try:
-                        # Envoyer le message
-                        await context.bot.send_message(**send_kwargs)
-                        
-                        # Stocker les messages détaillés ET le screenshot pour les callbacks
-                        context.bot_data[f'details_{user_id}'] = detailed_message
-                        context.bot_data[f'recap_{user_id}'] = recap_message
-                        context.bot_data[f'screenshot_{user_id}'] = order.get('screenshot_file_id')
-                        context.bot_data[f'thread_{user_id}'] = message_thread_id  # Stocker le thread ID
-                        context.bot_data[f'chat_{user_id}'] = target_id  # Stocker le chat ID
-                        context.bot_data[f'topic_name_{user_id}'] = topic_display_name if target_type == 'groupe' and topic_name else None  # Stocker le nom du topic
-                        
-                        logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
-                        
-                    except Exception as e:
-                        logger.error(f"Erreur lors de l'envoi au {target_type} ({target_id}): {str(e)}")
-                        # Essayer d'envoyer un message d'erreur à l'admin si possible
-                        if target_type != 'admin' and ADMIN_ID:
-                            try:
-                                await context.bot.send_message(
-                                    chat_id=ADMIN_ID,
-                                    text=f"❌ Erreur lors de l'envoi de la commande au groupe: {str(e)}"
-                                )
-                            except:
-                                pass
-            else:
-                logger.warning("Ni ADMIN_ID ni CHANNEL_ID ne sont configurés! La commande n'a pas été envoyée.")
+                    logger.info(f"Commande envoyée au {target_type} ({target_id}) pour l'utilisateur {order['username']}")
+                except Exception as e:
+                    logger.error(f"Erreur lors de l'envoi au {target_type} ({target_id}): {e}")
+        else:
+            logger.warning("Ni ADMIN_ID ni CHANNEL_ID ne sont configurés! La commande n'a pas été envoyée.")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Gère les clics sur les boutons inline."""
@@ -437,97 +421,106 @@ class OrderBot:
         await query.answer()
         
         callback_data = query.data
+        logger.info(f"Bouton pressé: {callback_data}")
         
-        # Récupérer le thread_id si disponible
-        message_thread_id = query.message.message_thread_id if hasattr(query.message, 'message_thread_id') else None
-        
-        # Vérifier si c'est un bouton de détails ou de récap
-        if callback_data.startswith('details_'):
-            message = context.bot_data.get(callback_data, "❌ Détails non disponibles")
-            await query.message.reply_text(message, parse_mode='Markdown')
+        try:
+            # Récupérer le thread_id si disponible
+            message_thread_id = query.message.message_thread_id if hasattr(query.message, 'message_thread_id') else None
             
-            # Envoyer aussi le screenshot si disponible
-            user_id = callback_data.replace('details_', '')
-            screenshot_id = context.bot_data.get(f'screenshot_{user_id}')
-            if screenshot_id:
-                await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=screenshot_id,
-                    caption="📸 Screenshot du panier",
-                    message_thread_id=message_thread_id
+            # Vérifier si c'est un bouton de détails ou de récap
+            if callback_data.startswith('details_'):
+                message = context.bot_data.get(callback_data, "❌ Détails non disponibles")
+                await query.message.reply_text(message, parse_mode='Markdown')
+                
+                # Envoyer aussi le screenshot si disponible
+                user_id = callback_data.replace('details_', '')
+                screenshot_id = context.bot_data.get(f'screenshot_{user_id}')
+                if screenshot_id:
+                    await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=screenshot_id,
+                        caption="📸 Screenshot du panier",
+                        message_thread_id=message_thread_id
+                    )
+            
+            elif callback_data.startswith('recap_'):
+                message = context.bot_data.get(callback_data, "❌ Récapitulatif non disponible")
+                await query.message.reply_text(message, parse_mode='Markdown')
+            
+            elif callback_data.startswith('done_') or callback_data.startswith('todo_') or callback_data.startswith('close_'):
+                is_done = callback_data.startswith('done_')
+                is_closed = callback_data.startswith('close_')
+                user_id = callback_data.replace('done_', '').replace('todo_', '').replace('close_', '')
+                thread_id = context.bot_data.get(f'thread_{user_id}')
+                chat_id = context.bot_data.get(f'chat_{user_id}')
+                topic_name = context.bot_data.get(f'topic_name_{user_id}')
+                
+                # Mettre à jour le statut
+                if is_closed:
+                    status = 'closed'
+                    status_text = "🔒 **COMMANDE FERMÉE**"
+                    topic_prefix = "🔒 "
+                else:
+                    status = 'done' if is_done else 'todo'
+                    status_text = "✅ **COMMANDE TERMINÉE**" if is_done else "📌 **À FAIRE**"
+                    topic_prefix = "✅ " if is_done else "📌 "
+                
+                context.bot_data[f'status_{user_id}'] = status
+                
+                # Modifier le message
+                message_text = query.message.text
+                # Supprimer les anciens statuts s'ils existent
+                message_text = message_text.split('\n\n📌 **À FAIRE**')[0]
+                message_text = message_text.split('\n\n✅ **COMMANDE TERMINÉE**')[0]
+                
+                # Mettre à jour le message avec le nouveau statut
+                new_message_text = f"{message_text}\n\n{status_text}"
+                
+                # Créer une nouvelle instance du clavier pour s'assurer qu'il est à jour
+                keyboard = [
+                    [
+                        InlineKeyboardButton("📋 Détails", callback_data=f"details_{user_id}"),
+                        InlineKeyboardButton("📝 Récap", callback_data=f"recap_{user_id}")
+                    ],
+                    [
+                        InlineKeyboardButton("✅ Marqué comme fait", callback_data=f"done_{user_id}"),
+                        InlineKeyboardButton("📌 À faire", callback_data=f"todo_{user_id}")
+                    ],
+                    [
+                        InlineKeyboardButton("🔒 Fermer", callback_data=f"close_{user_id}")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Mettre à jour le message avec le nouveau statut et le clavier
+                await query.edit_message_text(
+                    text=new_message_text,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
                 )
-        elif callback_data.startswith('recap_'):
-            message = context.bot_data.get(callback_data, "❌ Récapitulatif non disponible")
-            await query.message.reply_text(message, parse_mode='Markdown')
-        elif callback_data.startswith('done_'):
-            # Marquer comme fait
-            user_id = callback_data.replace('done_', '')
-            thread_id = context.bot_data.get(f'thread_{user_id}')
-            chat_id = context.bot_data.get(f'chat_{user_id}')
-            topic_name = context.bot_data.get(f'topic_name_{user_id}')
-            
-            # Mettre à jour le statut
-            context.bot_data[f'status_{user_id}'] = 'done'
-            
-            # Modifier le message
-            message_text = query.message.text
-            # Supprimer les anciens statuts s'ils existent
-            message_text = message_text.split('\n\n📌 **À FAIRE**')[0]
-            message_text = message_text.split('\n\n✅ **COMMANDE TERMINÉE**')[0]
-            
-            await query.edit_message_text(
-                f"{message_text}\n\n✅ **COMMANDE TERMINÉE**",
-                parse_mode='Markdown',
-                reply_markup=query.message.reply_markup  # Conserver les boutons existants
-            )
-            
-            # Modifier le nom du topic si disponible
-            if thread_id and chat_id and topic_name:
-                try:
-                    await context.bot.edit_forum_topic(
-                        chat_id=chat_id,
-                        message_thread_id=thread_id,
-                        name=f"✅ {topic_name}"
-                    )
-                except Exception as e:
-                    logger.error(f"Erreur lors de la modification du topic: {e}")
-            
-            await query.answer("✅ Commande marquée comme terminée!")
-            
-        elif callback_data.startswith('todo_'):
-            # Marquer comme à faire
-            user_id = callback_data.replace('todo_', '')
-            thread_id = context.bot_data.get(f'thread_{user_id}')
-            chat_id = context.bot_data.get(f'chat_{user_id}')
-            topic_name = context.bot_data.get(f'topic_name_{user_id}')
-            
-            # Mettre à jour le statut
-            context.bot_data[f'status_{user_id}'] = 'todo'
-            
-            # Modifier le message
-            message_text = query.message.text
-            # Supprimer les anciens statuts s'ils existent
-            message_text = message_text.split('\n\n📌 **À FAIRE**')[0]
-            message_text = message_text.split('\n\n✅ **COMMANDE TERMINÉE**')[0]
-            
-            await query.edit_message_text(
-                f"{message_text}\n\n📌 **À FAIRE**",
-                parse_mode='Markdown',
-                reply_markup=query.message.reply_markup  # Conserver les boutons existants
-            )
-            
-            # Modifier le nom du topic si disponible
-            if thread_id and chat_id and topic_name:
-                try:
-                    await context.bot.edit_forum_topic(
-                        chat_id=chat_id,
-                        message_thread_id=thread_id,
-                        name=f"📌 {topic_name}"
-                    )
-                except Exception as e:
-                    logger.error(f"Erreur lors de la modification du topic: {e}")
-            
-            await query.answer("📌 Commande marquée comme à faire!")
+                
+                # Modifier le nom du topic si disponible
+                if thread_id and chat_id and topic_name:
+                    try:
+                        # Enlever les emojis existants pour éviter la duplication
+                        clean_topic_name = topic_name.lstrip('✅📌🔒 ')
+                        await context.bot.edit_forum_topic(
+                            chat_id=chat_id,
+                            message_thread_id=thread_id,
+                            name=f"{topic_prefix}{clean_topic_name}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Erreur lors de la modification du topic: {e}")
+                
+                # Message de confirmation différent selon l'action
+                if is_closed:
+                    await query.answer("🔒 Commande fermée avec succès!")
+                else:
+                    await query.answer(f"✅ Commande marquée comme {'terminée' if is_done else 'à faire'}!")
+                
+        except Exception as e:
+            logger.error(f"Erreur dans button_callback: {e}")
+            await query.answer("❌ Une erreur est survenue. Veuillez réessayer.")
 
     async def get_channel_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Récupère l'ID du canal/groupe où la commande est envoyée."""
@@ -584,10 +577,14 @@ def main():
     application.add_handler(conv_handler)
     
     # Ajouter le handler pour les boutons inline (en dehors de la conversation)
-    application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_)'))
+    # S'assurer que le pattern correspond exactement aux callbacks utilisés
+    application.add_handler(CallbackQueryHandler(bot.button_callback, pattern='^(details_|recap_|done_|todo_|close_)'))
     
     # Ajouter la commande pour obtenir l'ID du canal
     application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
+    
+    # Activer le stockage des données du bot
+    application.bot_data = {}
     
     # Démarrer le bot
     logger.info("Bot démarré!")
@@ -596,3 +593,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
