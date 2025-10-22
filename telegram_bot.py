@@ -4,6 +4,7 @@
 import logging
 import os
 from datetime import datetime
+from aiohttp import web
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -14,7 +15,6 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler,
 )
-from aiohttp import web
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -24,33 +24,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- ÉTATS ---
-(
-    RESTAURANT,
-    ADRESSE,
-    PRIX_SUBTOTAL,
-    PRIX_TTC,
-    MOYEN_PAIEMENT,
-    SCREENSHOT,
-    LIVRAISON_TYPE,
-    CRENEAU,
-) = range(8)
+(RESTAURANT, ADRESSE, PRIX_SUBTOTAL, PRIX_TTC, MOYEN_PAIEMENT, SCREENSHOT, LIVRAISON_TYPE, CRENEAU) = range(8)
 
-# --- CONFIG ---
-ADMIN_ID = int(os.getenv("ADMIN_ID", "1692775134"))
+# --- ENV ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "secret123")
 
 if not TELEGRAM_BOT_TOKEN or ":" not in TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN invalide ou manquant")
     raise SystemExit(1)
-
-PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 if not PUBLIC_URL:
     logger.error("❌ PUBLIC_URL manquant (ex: https://xxx.onrender.com)")
     raise SystemExit(1)
-
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "secret123")
-
 
 # --- BOT ---
 class OrderBot:
@@ -60,14 +46,13 @@ class OrderBot:
         await update.message.reply_text(
             f"👋 Bonjour {user.first_name} !\n\n"
             "Indiquez le **nom du restaurant et la ville** (ex: McDonald's Paris) :",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return RESTAURANT
 
     async def restaurant(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data["order"]["restaurant"] = update.message.text
-        await update.message.reply_text("✅ Restaurant enregistré !\n\nEntrez votre **adresse complète** :",
-                                        parse_mode="Markdown")
+        await update.message.reply_text("✅ Restaurant enregistré !\n\nEntrez votre **adresse complète** :", parse_mode="Markdown")
         return ADRESSE
 
     async def adresse(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -96,7 +81,6 @@ class OrderBot:
                 await update.message.reply_text("❌ Le TTC ne peut pas être inférieur au HT.")
                 return PRIX_TTC
             context.user_data["order"]["prix_ttc"] = prix_ttc
-
             keyboard = [["🏦 Virement", "📱 PayPal"], ["🍎 Apple Pay"]]
             await update.message.reply_text("✅ TTC enregistré !\n\nChoisissez un **moyen de paiement** :",
                                             reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
@@ -116,11 +100,13 @@ class OrderBot:
             await update.message.reply_text("❌ Envoyez une **image**.")
             return SCREENSHOT
         context.user_data["order"]["screenshot_id"] = update.message.photo[-1].file_id
-        await update.message.reply_text("✅ Screenshot reçu !\n\n🚀 Commander maintenant ou 📅 Planifier ?",
-                                        reply_markup=InlineKeyboardMarkup([
-                                            [InlineKeyboardButton("🚀 Maintenant", callback_data="now")],
-                                            [InlineKeyboardButton("📅 Planifier", callback_data="plan")]
-                                        ]))
+        await update.message.reply_text(
+            "✅ Screenshot reçu !\n\n🚀 Commander maintenant ou 📅 Planifier ?",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Maintenant", callback_data="now")],
+                [InlineKeyboardButton("📅 Planifier", callback_data="plan")],
+            ]),
+        )
         return LIVRAISON_TYPE
 
     async def livraison_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -146,12 +132,11 @@ class OrderBot:
         await update.message.reply_text("❌ Commande annulée. Tapez /start pour recommencer.")
         return ConversationHandler.END
 
-
 # --- APPLICATION ---
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 bot = OrderBot()
 
-conv_handler = ConversationHandler(
+conv = ConversationHandler(
     entry_points=[CommandHandler("start", bot.start)],
     states={
         RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
@@ -165,17 +150,16 @@ conv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler("cancel", bot.cancel)],
 )
-application.add_handler(conv_handler)
+application.add_handler(conv)
 
-# --- Health Check ---
+# --- Health check ---
 async def health(_):
     return web.Response(text="ok")
-
 application.web_app.add_routes([web.get("/", health)])
 
-# --- RUN WEBHOOK ---
+# --- Webhook ---
 if __name__ == "__main__":
-    logger.info("🚀 Bot démarré avec Webhook sur Render")
+    logging.info("🚀 Bot démarré (Render / webhook)")
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8000)),
