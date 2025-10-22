@@ -592,21 +592,68 @@ def main():
 # Handlers déjà ajoutés au-dessus (conv_handler, CallbackQueryHandler, CommandHandler, etc.)
 
 # --- Health check pour Render (doit être défini AVANT run_webhook) ---
+# ===========================
+# REMPLACE TOUT À PARTIR D'ICI
+# ===========================
 from aiohttp import web
 
+# ---- LIRE LES VARS D'ENV ----
+def _getenv(name):
+    v = os.environ.get(name)
+    return v.strip() if v else None
+
+TOKEN = _getenv("BOT_TOKEN") or _getenv("TELEGRAM_BOT_TOKEN")
+if not TOKEN or ":" not in TOKEN:
+    logger.error("BOT_TOKEN/TELEGRAM_BOT_TOKEN manquant ou invalide (doit contenir ':').")
+    raise SystemExit(1)
+
+PUBLIC_URL = (_getenv("PUBLIC_URL") or "")
+PUBLIC_URL = PUBLIC_URL.rstrip("/")
+if not PUBLIC_URL:
+    logger.error("PUBLIC_URL manquant (ex: https://ton-service.onrender.com).")
+    raise SystemExit(1)
+
+WEBHOOK_SECRET = _getenv("WEBHOOK_SECRET") or "secret123"
+
+# ---- CRÉER L'APPLICATION PTB AU NIVEAU MODULE ----
+application = Application.builder().token(TOKEN).build()
+
+# ---- INSTANCIER TON BOT ET AJOUTER LES HANDLERS ----
+bot = OrderBot()
+
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler('start', bot.start)],
+    states={
+        RESTAURANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.restaurant)],
+        ADRESSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.adresse)],
+        PRIX_SUBTOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_subtotal)],
+        PRIX_TTC: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.prix_ttc)],
+        MOYEN_PAIEMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.moyen_paiement)],
+        SCREENSHOT: [MessageHandler(filters.PHOTO, bot.screenshot)],
+        LIVRAISON_TYPE: [CallbackQueryHandler(bot.livraison_type)],
+        CRENEAU: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.creneau)],
+    },
+    fallbacks=[CommandHandler('cancel', bot.cancel)],
+)
+application.add_handler(conv_handler)
+application.add_handler(CallbackQueryHandler(bot.button_callback, pattern=r'^(details_|recap_|done_|todo_|close_)'))
+application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
+
+# Stock commun
+application.bot_data = {}
+
+# ---- HEALTH CHECK (doit être enregistré AVANT run_webhook) ----
 async def health(_):
     return web.Response(text="ok")
-
 application.web_app.add_routes([web.get("/", health)])
 
-# --- Lancement en mode webhook (UNE SEULE FOIS) ---
+# ---- LANCEMENT EN MODE WEBHOOK ----
 if __name__ == "__main__":
     logger.info("Bot démarré (webhook) !")
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8000)),
-        url_path=TOKEN,  # garde bien le même TOKEN que tu utilises dans ton code
-        secret_token=os.environ.get("WEBHOOK_SECRET", "secret123"),
-        webhook_url=f"{os.environ['PUBLIC_URL'].rstrip('/')}/{TOKEN}"
+        url_path=TOKEN,                          # endpoint privé: /<token>
+        secret_token=WEBHOOK_SECRET,             # même valeur que dans Render
+        webhook_url=f"{PUBLIC_URL}/{TOKEN}",     # URL publique Render + /<token>
     )
-    
