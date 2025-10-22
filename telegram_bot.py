@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration depuis les variables d'environnement (ou valeurs par défaut)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '1692775134'))
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAGqGlMvf_401OH-QsNgjFLEAJAd_AJz1Jg')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7369442513:AAEaNKDtBPmlbmpNVqSdfaqt-9uFY5MzljE')
 CHANNEL_ID = os.getenv('CHANNEL_ID', '-1003199416919')  # ID du canal pour les notifications
 
 
