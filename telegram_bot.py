@@ -587,10 +587,26 @@ def main():
     application.bot_data = {}
     
     # Démarrer le bot
-    logger.info("Bot démarré!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Activer le stockage des données du bot (si tu en as besoin)
 
+# Handlers déjà ajoutés au-dessus (conv_handler, CallbackQueryHandler, CommandHandler, etc.)
 
-if __name__ == '__main__':
-    main()
+# --- Health check pour Render (doit être défini AVANT run_webhook) ---
+from aiohttp import web
+
+async def health(_):
+    return web.Response(text="ok")
+
+application.web_app.add_routes([web.get("/", health)])
+
+# --- Lancement en mode webhook (UNE SEULE FOIS) ---
+if __name__ == "__main__":
+    logger.info("Bot démarré (webhook) !")
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        url_path=TOKEN,  # garde bien le même TOKEN que tu utilises dans ton code
+        secret_token=os.environ.get("WEBHOOK_SECRET", "secret123"),
+        webhook_url=f"{os.environ['PUBLIC_URL'].rstrip('/')}/{TOKEN}"
+    )
     
