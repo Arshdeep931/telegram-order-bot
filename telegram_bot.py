@@ -3,7 +3,7 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -33,8 +33,7 @@ logger = logging.getLogger(__name__)
     SCREENSHOT,
     LIVRAISON_TYPE,
     CRENEAU,
-    PRIX_CORRIGE
-) = range(9)
+) = range(8)
 
 # --- CONFIG ---
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1692775134"))
@@ -55,28 +54,25 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "secret123")
 
 # --- BOT ---
 class OrderBot:
-    def __init__(self):
-        self.orders = {}
-
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         user = update.effective_user
+        context.user_data["order"] = {"user_id": user.id}
         await update.message.reply_text(
-            f"Bonjour {user.first_name}! 👋\n\n"
-            "Veuillez indiquer le **nom du restaurant et la ville** :",
+            f"👋 Bonjour {user.first_name} !\n\n"
+            "Indiquez le **nom du restaurant et la ville** (ex: McDonald's Paris) :",
             parse_mode="Markdown"
         )
-        context.user_data["order"] = {"user_id": user.id}
         return RESTAURANT
 
     async def restaurant(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data["order"]["restaurant"] = update.message.text
-        await update.message.reply_text("✅ Restaurant enregistré!\n\nEntrez votre **adresse complète** :",
+        await update.message.reply_text("✅ Restaurant enregistré !\n\nEntrez votre **adresse complète** :",
                                         parse_mode="Markdown")
         return ADRESSE
 
     async def adresse(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data["order"]["adresse"] = update.message.text
-        await update.message.reply_text("✅ Adresse enregistrée!\n\nPrix **sous-total (HT)** :")
+        await update.message.reply_text("✅ Adresse enregistrée !\n\nIndiquez le **prix sous-total (HT)** :")
         return PRIX_SUBTOTAL
 
     async def prix_subtotal(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -86,7 +82,7 @@ class OrderBot:
                 await update.message.reply_text("❌ Minimum 20€ HT, réessayez :")
                 return PRIX_SUBTOTAL
             context.user_data["order"]["prix_subtotal"] = prix
-            await update.message.reply_text("✅ Prix HT enregistré!\n\nEntrez le **prix TTC** :")
+            await update.message.reply_text("✅ Prix HT enregistré !\n\nIndiquez le **prix TTC** :")
             return PRIX_TTC
         except ValueError:
             await update.message.reply_text("❌ Format invalide, ex: 25.50")
@@ -100,8 +96,9 @@ class OrderBot:
                 await update.message.reply_text("❌ Le TTC ne peut pas être inférieur au HT.")
                 return PRIX_TTC
             context.user_data["order"]["prix_ttc"] = prix_ttc
+
             keyboard = [["🏦 Virement", "📱 PayPal"], ["🍎 Apple Pay"]]
-            await update.message.reply_text("✅ TTC enregistré!\n\nMoyen de paiement ?",
+            await update.message.reply_text("✅ TTC enregistré !\n\nChoisissez un **moyen de paiement** :",
                                             reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
             return MOYEN_PAIEMENT
         except ValueError:
@@ -110,7 +107,7 @@ class OrderBot:
 
     async def moyen_paiement(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         context.user_data["order"]["moyen_paiement"] = update.message.text
-        await update.message.reply_text("✅ Paiement enregistré!\n\nEnvoyez un **screenshot** du panier 📸",
+        await update.message.reply_text("✅ Paiement enregistré !\n\nEnvoyez un **screenshot** du panier 📸",
                                         reply_markup=ReplyKeyboardRemove())
         return SCREENSHOT
 
@@ -118,7 +115,8 @@ class OrderBot:
         if not update.message.photo:
             await update.message.reply_text("❌ Envoyez une **image**.")
             return SCREENSHOT
-        await update.message.reply_text("✅ Screenshot reçu!\n\n🚀 Commander maintenant ou 📅 Planifier ?",
+        context.user_data["order"]["screenshot_id"] = update.message.photo[-1].file_id
+        await update.message.reply_text("✅ Screenshot reçu !\n\n🚀 Commander maintenant ou 📅 Planifier ?",
                                         reply_markup=InlineKeyboardMarkup([
                                             [InlineKeyboardButton("🚀 Maintenant", callback_data="now")],
                                             [InlineKeyboardButton("📅 Planifier", callback_data="plan")]
@@ -175,9 +173,9 @@ async def health(_):
 
 application.web_app.add_routes([web.get("/", health)])
 
-# --- Run webhook ---
+# --- RUN WEBHOOK ---
 if __name__ == "__main__":
-    logger.info("🚀 Bot démarré (Render webhook)")
+    logger.info("🚀 Bot démarré avec Webhook sur Render")
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8000)),
