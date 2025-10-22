@@ -592,35 +592,29 @@ def main():
 # Handlers déjà ajoutés au-dessus (conv_handler, CallbackQueryHandler, CommandHandler, etc.)
 
 # --- Health check pour Render (doit être défini AVANT run_webhook) ---
-# ===========================
-# REMPLACE TOUT À PARTIR D'ICI
-# ===========================
 from aiohttp import web
 
-# ---- LIRE LES VARS D'ENV ----
 def _getenv(name):
     v = os.environ.get(name)
     return v.strip() if v else None
 
 TOKEN = _getenv("BOT_TOKEN") or _getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN or ":" not in TOKEN:
-    logger.error("BOT_TOKEN/TELEGRAM_BOT_TOKEN manquant ou invalide (doit contenir ':').")
+    logger.error("BOT_TOKEN/TELEGRAM_BOT_TOKEN manquant ou invalide (il doit contenir ':').")
     raise SystemExit(1)
 
-PUBLIC_URL = (_getenv("PUBLIC_URL") or "")
-PUBLIC_URL = PUBLIC_URL.rstrip("/")
+PUBLIC_URL = (_getenv("PUBLIC_URL") or "").rstrip("/")
 if not PUBLIC_URL:
-    logger.error("PUBLIC_URL manquant (ex: https://ton-service.onrender.com).")
+    logger.error("PUBLIC_URL manquant (ex: https://<ton-service>.onrender.com)")
     raise SystemExit(1)
 
 WEBHOOK_SECRET = _getenv("WEBHOOK_SECRET") or "secret123"
 
-# ---- CRÉER L'APPLICATION PTB AU NIVEAU MODULE ----
+# ⚠️ on (re)crée l'application ici au niveau module, pour pouvoir ajouter le healthcheck
 application = Application.builder().token(TOKEN).build()
 
-# ---- INSTANCIER TON BOT ET AJOUTER LES HANDLERS ----
+# réinstancie le bot + handlers (mêmes que plus haut)
 bot = OrderBot()
-
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('start', bot.start)],
     states={
@@ -638,22 +632,20 @@ conv_handler = ConversationHandler(
 application.add_handler(conv_handler)
 application.add_handler(CallbackQueryHandler(bot.button_callback, pattern=r'^(details_|recap_|done_|todo_|close_)'))
 application.add_handler(CommandHandler('get_channel_id', bot.get_channel_id))
-
-# Stock commun
 application.bot_data = {}
 
-# ---- HEALTH CHECK (doit être enregistré AVANT run_webhook) ----
+# --- endpoint santé "/" (PTB 20.x expose bien .web_app) ---
 async def health(_):
     return web.Response(text="ok")
 application.web_app.add_routes([web.get("/", health)])
 
-# ---- LANCEMENT EN MODE WEBHOOK ----
+# --- Lancement webhook ---
 if __name__ == "__main__":
     logger.info("Bot démarré (webhook) !")
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8000)),
-        url_path=TOKEN,                          # endpoint privé: /<token>
-        secret_token=WEBHOOK_SECRET,             # même valeur que dans Render
-        webhook_url=f"{PUBLIC_URL}/{TOKEN}",     # URL publique Render + /<token>
+        url_path=TOKEN,
+        secret_token=WEBHOOK_SECRET,
+        webhook_url=f"{PUBLIC_URL}/{TOKEN}",
     )
